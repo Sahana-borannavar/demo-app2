@@ -42,7 +42,7 @@ jobs:
 
       run: |
 
-        docker build -f demo-app2/Dockerfile -t ${{ secrets.DOCKER_REPO }}:${{ github.sha }} demo-app2
+        docker build -f Dockerfile -t ${{ secrets.DOCKER_REPO }}:${{ github.sha }} demo-app2
 
         docker tag  ${{ secrets.DOCKER_REPO }}:${{ github.sha }} ${{ secrets.DOCKER_REPO }}:latest
  
