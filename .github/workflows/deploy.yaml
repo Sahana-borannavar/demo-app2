@@ -34,7 +34,7 @@ jobs:
 
         password: ${{ secrets.DOCKER_PASSWORD }}   # password or Docker Hub PAT
  
-    # 3) Build Docker image from demo-app/ using the Dockerfile inside demo-app/
+    # 3) Build Docker image from demo-app2/ using the Dockerfile inside demo-app2/
 
     #    Tag with commit SHA + latest (two tags)
 
@@ -42,7 +42,7 @@ jobs:
 
       run: |
 
-        docker build -f demo-app/Dockerfile -t ${{ secrets.DOCKER_REPO }}:${{ github.sha }} demo-app
+        docker build -f demo-app2/Dockerfile -t ${{ secrets.DOCKER_REPO }}:${{ github.sha }} demo-app2
 
         docker tag  ${{ secrets.DOCKER_REPO }}:${{ github.sha }} ${{ secrets.DOCKER_REPO }}:latest
  
