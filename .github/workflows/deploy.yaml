@@ -21,33 +21,32 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # 3) Detect Dockerfile at repo root (Dockerfile or dockerfile) and build with ROOT CONTEXT (.)
-      #    IMPORTANT: Using '.' as context so COPY pom.xml / src works.
+      # 3) Build Docker image from repo root context (.)
+      #    Detect Dockerfile name (Dockerfile or dockerfile) at repo root.
       - name: Build Docker image (SHA + latest)
         id: build
         shell: bash
         run: |
-          set -e
+          set -euo pipefail
 
-          # Validate DOCKER_REPO format (no invalid chars; must be repo like user/name)
           if [[ -z "${{ secrets.DOCKER_REPO }}" ]]; then
-            echo "ERROR: secrets.DOCKER_REPO is not set (e.g., yourdockerhubuser/demo-app2)"
+            echo "ERROR: secrets.DOCKER_REPO is not set (e.g., 'sahana/demo-app2')"
             exit 1
           fi
           if [[ "${{ secrets.DOCKER_REPO }}" == *"*"* ]]; then
-            echo "ERROR: secrets.DOCKER_REPO contains invalid character '*'. Use e.g., 'yourdockerhubuser/demo-app2'."
+            echo "ERROR: secrets.DOCKER_REPO contains invalid '*'. Use e.g., 'sahana/demo-app2'."
             exit 1
           fi
 
-          # Decide which Dockerfile to use (case-sensitive)
+          # Detect Dockerfile at repo root (case-sensitive)
           DOCKERFILE=""
           if [[ -f "Dockerfile" ]]; then
             DOCKERFILE="Dockerfile"
           elif [[ -f "dockerfile" ]]; then
             DOCKERFILE="dockerfile"
           else
-            echo "ERROR: No Dockerfile found at repo root. Place your Dockerfile at ./Dockerfile or ./dockerfile."
-            echo "Current directory content:"
+            echo "ERROR: No Dockerfile found at repo root. Place it at ./Dockerfile or ./dockerfile"
+            echo "Repo root files:"
             ls -la
             exit 1
           fi
@@ -55,74 +54,3 @@ jobs:
           echo "Using Dockerfile: $DOCKERFILE"
           echo "Using build context: . (repo root)"
 
-          # Build with SHA tag
-          docker build \
-            -f "$DOCKERFILE" \
-            -t "${{ secrets.DOCKER_REPO }}:${{ github.sha }}" \
-            .
-
-          # Also tag as latest
-          docker tag "${{ secrets.DOCKER_REPO }}:${{ github.sha }}" "${{ secrets.DOCKER_REPO }}:latest"
-
-      # 4) Push both tags to Docker Hub
-      - name: Push Docker image (SHA + latest)
-        shell: bash
-        run: |
-          set -e
-          docker push "${{ secrets.DOCKER_REPO }}:${{ github.sha }}"
-          docker push "${{ secrets.DOCKER_REPO }}:latest"
-
-      # 5) SSH into EC2 and deploy to Minikube (set image to SHA, apply yaml, rollout)
-      - name: Deploy to EC2 Minikube (update image to SHA, apply, rollout)
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ec2-user
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            set -e
-
-            echo "👉 Ensuring kubectl can talk to minikube (if already set, this won't fail the job)"
-            kubectl config use-context minikube || true
-
-            echo "🔍 Current Kubernetes context:"
-            kubectl config current-context || true
-
-            echo "🔧 Updating deployment to use image: ${{ secrets.DOCKER_REPO }}:${{ github.sha }}"
-
-            # If you know the deployment and container names, set them here:
-            DEPLOYMENT_NAME="demo-app-deployment"
-            CONTAINER_NAME="demo-app-container"  # <-- ensure this matches your container name in the YAML
-
-            # Prefer kubectl set image (no YAML surgery required)
-            # If the deployment doesn't exist yet, we will apply YAML afterwards.
-            set +e
-            kubectl get deploy "${DEPLOYMENT_NAME}"
-            DEPLOY_EXISTS=$?
-            set -e
-
-            if [ $DEPLOY_EXISTS -eq 0 ]; then
-              echo "✅ Deployment ${DEPLOYMENT_NAME} exists. Updating image via kubectl set image..."
-              kubectl set image deployment/${DEPLOYMENT_NAME} ${CONTAINER_NAME}=${{ secrets.DOCKER_REPO }}:${{ github.sha }} --record
-            else
-              echo "ℹ️ Deployment ${DEPLOYMENT_NAME} not found. Will apply YAML (if available) after this step."
-            fi
-
-            # If you keep a deployment YAML on the EC2 host, apply it as well (idempotent)
-            # NOTE: Ensure this file actually exists at this path on EC2 host.
-            if [ -f "$HOME/deployment.yaml" ]; then
-              echo "📦 Applying $HOME/deployment.yaml"
-              kubectl apply -f "$HOME/deployment.yaml"
-            else
-              echo "⚠️ $HOME/deployment.yaml not found on EC2. Skipping 'kubectl apply -f'."
-              echo "   If you want to apply from GitHub repository, copy the file to EC2 or 'kubectl apply -f https://raw.githubusercontent.com/...'"
-            fi
-
-            echo "🔁 Restarting rollout for ${DEPLOYMENT_NAME} (no-op if unchanged)"
-            kubectl rollout restart deployment "${DEPLOYMENT_NAME}" || true
-
-            echo "⏳ Waiting for rollout to finish…"
-            kubectl rollout status deployment/${DEPLOYMENT_NAME} --timeout=180s
-
-            echo "🔍 Final image on cluster:"
-            kubectl get deploy ${DEPLOYMENT_NAME} -o jsonpath='{.spec.template.spec.containers[0].image}'; echo
