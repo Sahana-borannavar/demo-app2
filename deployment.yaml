@@ -6,11 +6,11 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: demo-app        # <—— CHANGED
+      app: demo-app2        # <—— CHANGED
   template:
     metadata:
       labels:
-        app: demo-app      # <—— CHANGED
+        app: demo-app2      # <—— CHANGED
     spec:
       containers:
       - name: demo-app
