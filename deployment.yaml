@@ -14,6 +14,6 @@ spec:
     spec:
       containers:
       - name: demo-app
-        image: lakshmibi/demo-app:1c45b790fa2da3d141d26738c7aa5790444a2dc3
+        image: sahana1478/demo-app2:126f5041893e716bd5a1703c98622d57e60c2444
         ports:
         - containerPort: 8080
